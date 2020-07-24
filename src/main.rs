@@ -1,8 +1,9 @@
 use env_logger::fmt::{Color, Formatter, Target};
 use log::{error, info, warn, Level, LevelFilter, Log, Metadata, Record};
+use shadowsocks::{run_local, ClientConfig, Config, ConfigType, Mode};
 use std::clone::Clone;
 use std::io::Write;
-use std::net::{Ipv4Addr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex};
 use structopt::StructOpt;
 
@@ -29,6 +30,18 @@ async fn main() {
     };
     info!("Listen on {}", inter);
     info!("Break packets with MTU {}", flags.mtu);
+
+    if let Some(path) = flags.shadowsocks {
+        let mut config = Config::load_from_file(path.as_str(), ConfigType::Socks5Local).unwrap();
+        config.local_addr = Some(ClientConfig::from(SocketAddr::from(flags.dst)));
+        config.mode = Mode::TcpAndUdp;
+        tokio::spawn(async move {
+            if let Err(ref e) = run_local(config).await {
+                error!("{}", e);
+            }
+        });
+        info!("Start Shadowsocks on {}", flags.dst);
+    }
 
     // Route
     let src = match flags.preset {
@@ -180,6 +193,13 @@ struct Flags {
         default_value = "127.0.0.1:1080"
     )]
     pub dst: SocketAddrV4,
+    #[structopt(
+        long,
+        short = "S",
+        help = "Shadowsocks configuration path",
+        value_name = "PATH"
+    )]
+    pub shadowsocks: Option<String>,
 }
 
 /// Represents a logger.
